@@ -1,44 +1,27 @@
 // ============================================
-// GÉNÉRATEUR DE QUITTANCES DE LOYER - APP.JS (v2)
+// GÉNÉRATEUR DE QUITTANCES DE LOYER - APP.JS (v3)
+// Corrections: PDF blanc, ajout locataires supprimé, date de paiement par jour du mois
 // ============================================
 
 class RentReceiptGenerator {
   constructor() {
-    this.tenants = [];
     this.signatureImage = null;
-    this.preFillNextPeriod = false;
-    this.tenantCounter = 1;
     this.initializeApp();
   }
 
-  // ============================================
-  // INITIALISATION
-  // ============================================
-
   initializeApp() {
-    document.addEventListener('DOMContentLoaded', () => {
-      this.loadFromLocalStorage();
-      this.setupEventListeners();
-    });
-
-    // Fallback si DOM est déjà chargé
     if (document.readyState === 'loading') {
-      return;
+      document.addEventListener('DOMContentLoaded', () => {
+        this.setupEventListeners();
+        this.loadFromLocalStorage();
+      });
+    } else {
+      this.setupEventListeners();
+      this.loadFromLocalStorage();
     }
-    this.loadFromLocalStorage();
-    this.setupEventListeners();
   }
 
   setupEventListeners() {
-    // Bouton ajouter locataire
-    const addTenantBtn = document.getElementById('add-tenant-btn');
-    if (addTenantBtn) {
-      addTenantBtn.addEventListener('click', (e) => {
-        e.preventDefault();
-        this.addTenant();
-      });
-    }
-
     // Boutons générer PDF
     const generateBtns = document.querySelectorAll('.generate-pdf-btn');
     generateBtns.forEach(btn => {
@@ -55,15 +38,6 @@ class RentReceiptGenerator {
       this.setupDragAndDrop(fileInput);
     }
 
-    // Checkbox pré-remplissage
-    const prefillCheckbox = document.getElementById('prefill-checkbox');
-    if (prefillCheckbox) {
-      prefillCheckbox.addEventListener('change', (e) => {
-        this.preFillNextPeriod = e.target.checked;
-        this.saveToLocalStorage();
-      });
-    }
-
     // Écouteurs pour sauvegarde automatique
     this.setupAutoSave();
   }
@@ -73,146 +47,48 @@ class RentReceiptGenerator {
     if (!dropZone) return;
 
     ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
-      dropZone.addEventListener(eventName, preventDefaults, false);
+      dropZone.addEventListener(eventName, (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+      });
     });
-
-    function preventDefaults(e) {
-      e.preventDefault();
-      e.stopPropagation();
-    }
 
     ['dragenter', 'dragover'].forEach(eventName => {
       dropZone.addEventListener(eventName, () => {
         dropZone.classList.add('bg-gray-200', 'dark:bg-gray-500');
-      }, false);
+      });
     });
 
     ['dragleave', 'drop'].forEach(eventName => {
       dropZone.addEventListener(eventName, () => {
         dropZone.classList.remove('bg-gray-200', 'dark:bg-gray-500');
-      }, false);
+      });
     });
 
     dropZone.addEventListener('drop', (e) => {
-      const dt = e.dataTransfer;
-      const files = dt.files;
+      const files = e.dataTransfer.files;
       fileInput.files = files;
       this.handleSignatureUpload({ target: fileInput });
-    }, false);
+    });
   }
 
   setupAutoSave() {
-    // Inputs du bailleur
-    const landlordNameInput = document.getElementById('landlord-name');
-    const landlordAddressInput = document.getElementById('landlord-address');
-
-    if (landlordNameInput) {
-      landlordNameInput.addEventListener('change', () => this.saveToLocalStorage());
-    }
-    if (landlordAddressInput) {
-      landlordAddressInput.addEventListener('change', () => this.saveToLocalStorage());
-    }
-
-    // Inputs des dates et montants
-    ['date-start', 'date-end', 'date-payment', 'rental-amount', 'charges-amount'].forEach(id => {
+    const inputs = ['landlord-name', 'landlord-address', 'tenant-name', 'tenant-address', 
+                     'date-start', 'date-end', 'payment-day', 'rental-amount', 
+                     'charges-amount', 'additional-notes'];
+    
+    inputs.forEach(id => {
       const input = document.getElementById(id);
       if (input) {
         input.addEventListener('change', () => this.saveToLocalStorage());
       }
     });
-  }
 
-  // ============================================
-  // GESTION DES LOCATAIRES
-  // ============================================
-
-  addTenant() {
-    const tenantIndex = this.tenantCounter;
-    this.tenantCounter++;
-
-    this.tenants.push({
-      index: tenantIndex,
-      name: '',
-      address: ''
+    // Aussi sauvegarder au changement du radio pour le type de charges
+    const radios = document.querySelectorAll('input[name="charge_type"]');
+    radios.forEach(radio => {
+      radio.addEventListener('change', () => this.saveToLocalStorage());
     });
-
-    const container = document.getElementById('tenants-container');
-    if (!container) return;
-
-    const tenantHTML = `
-      <div class="tenant-form-${tenantIndex} flex flex-col gap-4 p-4 bg-gray-50 dark:bg-gray-700/50 rounded-lg border border-dashed border-gray-300 dark:border-gray-600">
-        <div class="flex items-center justify-between">
-          <h4 class="text-[#111318] dark:text-gray-200 text-base font-semibold">Locataire ${tenantIndex}</h4>
-          <button type="button" class="remove-tenant-btn-${tenantIndex} text-red-500 hover:text-red-700 text-sm font-medium flex items-center gap-1">
-            <span class="material-symbols-outlined text-lg">delete</span>
-          </button>
-        </div>
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-4">
-          <label class="flex flex-col w-full">
-            <p class="text-[#111318] dark:text-gray-200 text-base font-medium leading-normal pb-2">Nom complet du locataire ${tenantIndex}</p>
-            <input id="tenant-name-${tenantIndex}" type="text" class="tenant-input form-input w-full min-w-0 resize-none overflow-hidden rounded-lg text-[#111318] dark:text-white focus:outline-0 focus:ring-2 focus:ring-primary/50 border border-[#dbdfe6] dark:border-gray-600 bg-white dark:bg-background-dark h-14 placeholder:text-[#616f89] dark:placeholder:text-gray-500 p-[15px] text-base font-normal leading-normal" placeholder="Ex: Marie Martin" />
-          </label>
-          <label class="flex flex-col w-full md:col-span-2">
-            <p class="text-[#111318] dark:text-gray-200 text-base font-medium leading-normal pb-2">Adresse du bien loué - Locataire ${tenantIndex}</p>
-            <textarea id="tenant-address-${tenantIndex}" class="tenant-input form-input w-full min-w-0 resize-y overflow-hidden rounded-lg text-[#111318] dark:text-white focus:outline-0 focus:ring-2 focus:ring-primary/50 border border-[#dbdfe6] dark:border-gray-600 bg-white dark:bg-background-dark min-h-24 placeholder:text-[#616f89] dark:placeholder:text-gray-500 p-[15px] text-base font-normal leading-normal" placeholder="Ex: 456 Avenue des Champs-Élysées, 75008 Paris"></textarea>
-          </label>
-        </div>
-      </div>
-    `;
-
-    // Insérer avant le bouton "Ajouter"
-    const addBtn = document.getElementById('add-tenant-btn');
-    if (addBtn) {
-      addBtn.parentElement.insertAdjacentHTML('beforeend', tenantHTML);
-    } else {
-      container.insertAdjacentHTML('beforeend', tenantHTML);
-    }
-
-    // Ajouter les écouteurs d'événements
-    this.attachTenantListeners(tenantIndex);
-    this.saveToLocalStorage();
-  }
-
-  attachTenantListeners(index) {
-    const nameInput = document.getElementById(`tenant-name-${index}`);
-    const addressInput = document.getElementById(`tenant-address-${index}`);
-    const removeBtn = document.querySelector(`.remove-tenant-btn-${index}`);
-
-    if (nameInput) {
-      nameInput.addEventListener('change', () => {
-        const tenant = this.tenants.find(t => t.index === index);
-        if (tenant) {
-          tenant.name = nameInput.value;
-          this.saveToLocalStorage();
-        }
-      });
-    }
-
-    if (addressInput) {
-      addressInput.addEventListener('change', () => {
-        const tenant = this.tenants.find(t => t.index === index);
-        if (tenant) {
-          tenant.address = addressInput.value;
-          this.saveToLocalStorage();
-        }
-      });
-    }
-
-    if (removeBtn) {
-      removeBtn.addEventListener('click', (e) => {
-        e.preventDefault();
-        this.removeTenant(index);
-      });
-    }
-  }
-
-  removeTenant(index) {
-    this.tenants = this.tenants.filter(t => t.index !== index);
-    const form = document.querySelector(`.tenant-form-${index}`);
-    if (form) {
-      form.remove();
-    }
-    this.saveToLocalStorage();
   }
 
   // ============================================
@@ -223,7 +99,6 @@ class RentReceiptGenerator {
     const file = event.target.files?.[0];
     if (!file) return;
 
-    // Validation
     if (!['image/png', 'image/jpeg', 'image/gif'].includes(file.type)) {
       alert('Veuillez importer un fichier PNG, JPG ou GIF');
       return;
@@ -257,37 +132,29 @@ class RentReceiptGenerator {
   getFormData() {
     const landlordName = document.getElementById('landlord-name')?.value || '';
     const landlordAddress = document.getElementById('landlord-address')?.value || '';
+    const tenantName = document.getElementById('tenant-name')?.value || '';
+    const tenantAddress = document.getElementById('tenant-address')?.value || '';
     const startDate = document.getElementById('date-start')?.value || '';
     const endDate = document.getElementById('date-end')?.value || '';
-    const paymentDate = document.getElementById('date-payment')?.value || '';
+    const paymentDay = parseInt(document.getElementById('payment-day')?.value || '5');
     const rentalAmount = parseFloat(document.getElementById('rental-amount')?.value || 0);
     const chargesAmount = parseFloat(document.getElementById('charges-amount')?.value || 0);
     const chargeType = document.getElementById('charge-forfait')?.checked ? 'Forfait' : 'Provision';
     const additionalNotes = document.getElementById('additional-notes')?.value || '';
-
-    // Récupérer les locataires du formulaire
-    const tenantsFinal = [];
-    this.tenants.forEach(tenant => {
-      const nameInput = document.getElementById(`tenant-name-${tenant.index}`);
-      const addressInput = document.getElementById(`tenant-address-${tenant.index}`);
-      if (nameInput?.value || addressInput?.value) {
-        tenantsFinal.push({
-          name: nameInput?.value || '',
-          address: addressInput?.value || ''
-        });
-      }
-    });
 
     return {
       landlord: {
         name: landlordName,
         address: landlordAddress
       },
-      tenants: tenantsFinal,
+      tenant: {
+        name: tenantName,
+        address: tenantAddress
+      },
       dates: {
         start: startDate ? new Date(startDate) : null,
         end: endDate ? new Date(endDate) : null,
-        payment: paymentDate ? new Date(paymentDate) : null
+        paymentDay: paymentDay
       },
       rental: rentalAmount,
       charges: chargesAmount,
@@ -354,8 +221,8 @@ class RentReceiptGenerator {
         return;
       }
 
-      if (formData.tenants.length === 0 || !formData.tenants.some(t => t.name)) {
-        alert('Veuillez ajouter au moins un locataire avec un nom');
+      if (!formData.tenant.name) {
+        alert('Veuillez remplir le nom du locataire');
         return;
       }
 
@@ -389,33 +256,39 @@ class RentReceiptGenerator {
 
       // Charger html2pdf si nécessaire
       if (typeof html2pdf === 'undefined') {
+        alert('Chargement de la bibliothèque PDF en cours...');
         await this.loadHtml2PDF();
       }
 
       let pdfCount = 0;
-      const totalPDFs = months.length * formData.tenants.length;
 
-      // Générer un PDF par mois et par locataire
-      for (const tenant of formData.tenants) {
-        if (!tenant.name) continue;
+      // Générer un PDF par mois
+      for (const month of months) {
+        const receiptHTML = this.generateReceiptHTML(formData, month);
+        const fileName = `Quittance_${formData.tenant.name.replace(/[^a-zA-Z0-9]/g, '_')}_${this.formatDate(month.start, 'MM_YYYY')}.pdf`;
 
-        for (const month of months) {
-          const receiptHTML = this.generateReceiptHTML(formData, tenant, month);
-          const fileName = `Quittance_${tenant.name.replace(/[^a-zA-Z0-9]/g, '_')}_${this.formatDate(month.start, 'MM_YYYY')}.pdf`;
+        const opt = {
+          margin: 10,
+          filename: fileName,
+          image: { type: 'jpeg', quality: 0.98 },
+          html2canvas: { scale: 2, logging: false },
+          jsPDF: { orientation: 'portrait', unit: 'mm', format: 'a4' }
+        };
 
-          const options = {
-            margin: 10,
-            filename: fileName,
-            image: { type: 'jpeg', quality: 0.98 },
-            html2canvas: { scale: 2, useCORS: true },
-            jsPDF: { orientation: 'portrait', unit: 'mm', format: 'a4' }
-          };
+        // Créer l'élément temporaire
+        const element = document.createElement('div');
+        element.innerHTML = receiptHTML;
+        element.style.display = 'none';
+        document.body.appendChild(element);
 
-          html2pdf().set(options).from(receiptHTML).save();
+        try {
+          await html2pdf().set(opt).from(element).save();
           pdfCount++;
-
-          // Délai entre les téléchargements
-          await new Promise(resolve => setTimeout(resolve, 500));
+          await new Promise(resolve => setTimeout(resolve, 1000));
+        } catch (error) {
+          console.error('Erreur pour le PDF du mois:', month, error);
+        } finally {
+          document.body.removeChild(element);
         }
       }
 
@@ -434,244 +307,137 @@ class RentReceiptGenerator {
       script.src = 'https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js';
       script.onload = resolve;
       script.onerror = reject;
+      script.type = 'text/javascript';
       document.head.appendChild(script);
     });
   }
 
-  generateReceiptHTML(formData, tenant, month) {
+  generateReceiptHTML(formData, month) {
     const formattedStart = this.formatDate(month.start, 'DD/MM/YYYY');
     const formattedEnd = this.formatDate(month.end, 'DD/MM/YYYY');
     const receiptDate = this.formatDate(new Date(), 'DD/MM/YYYY');
     const isPartialMonth = month.daysToCharge < month.daysInMonth;
+    
+    // Calculer la date de paiement pour ce mois
+    const paymentDate = new Date(month.start.getFullYear(), month.start.getMonth(), formData.dates.paymentDay);
+    const formattedPaymentDate = this.formatDate(paymentDate, 'DD/MM/YYYY');
 
-    const receiptHTML = `
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <meta charset="UTF-8">
-        <style>
-          * { margin: 0; padding: 0; box-sizing: border-box; }
-          body {
-            font-family: 'Calibri', 'Arial', sans-serif;
-            color: #333;
-            line-height: 1.5;
-          }
-          .container {
-            max-width: 210mm;
-            margin: 0 auto;
-            padding: 15mm;
-            background: white;
-          }
-          .header {
-            text-align: center;
-            margin-bottom: 30px;
-            border-bottom: 3px solid #135bec;
-            padding-bottom: 20px;
-          }
-          .header h1 {
-            color: #135bec;
-            font-size: 28px;
-            font-weight: bold;
-            margin-bottom: 5px;
-          }
-          .header p {
-            color: #999;
-            font-size: 11px;
-          }
-          .section {
-            margin-bottom: 20px;
-          }
-          .section-title {
-            font-weight: bold;
-            font-size: 12px;
-            color: #135bec;
-            text-transform: uppercase;
-            margin-bottom: 8px;
-            border-bottom: 1px solid #ddd;
-            padding-bottom: 5px;
-          }
-          .info-row {
-            display: flex;
-            margin-bottom: 6px;
-            font-size: 12px;
-          }
-          .info-label {
-            font-weight: bold;
-            width: 140px;
-            min-width: 140px;
-          }
-          .info-value {
-            flex: 1;
-            word-break: break-word;
-          }
-          .amount-section {
-            background-color: #f8f8f8;
-            padding: 12px;
-            border-radius: 3px;
-            margin: 20px 0;
-            border: 1px solid #e0e0e0;
-          }
-          .amount-row {
-            display: flex;
-            justify-content: space-between;
-            margin-bottom: 6px;
-            font-size: 12px;
-          }
-          .amount-row.total {
-            font-weight: bold;
-            font-size: 14px;
-            border-top: 2px solid #135bec;
-            padding-top: 8px;
-            margin-top: 8px;
-            color: #135bec;
-          }
-          .signature-area {
-            margin-top: 40px;
-            display: flex;
-            justify-content: space-between;
-          }
-          .signature-box {
-            width: 45%;
-            text-align: center;
-            border-top: 1px solid #333;
-            padding-top: 8px;
-            font-size: 11px;
-          }
-          .signature-image {
-            max-width: 80px;
-            max-height: 50px;
-            margin-bottom: 8px;
-          }
-          .notes {
-            font-size: 10px;
-            color: #666;
-            margin-top: 20px;
-            padding: 10px;
-            background-color: #fafafa;
-            border-left: 3px solid #135bec;
-          }
-          .footer {
-            margin-top: 20px;
-            font-size: 10px;
-            color: #999;
-            border-top: 1px solid #ddd;
-            padding-top: 10px;
-            text-align: center;
-          }
-        </style>
-      </head>
-      <body>
-        <div class="container">
-          <div class="header">
-            <h1>QUITTANCE DE LOYER</h1>
-            <p>Document officiel</p>
-          </div>
+    return `
+      <div style="background: white; padding: 20mm; font-family: Arial, sans-serif; color: #333;">
+        <div style="text-align: center; margin-bottom: 30px; border-bottom: 3px solid #135bec; padding-bottom: 20px;">
+          <h1 style="color: #135bec; font-size: 32px; margin: 0; font-weight: bold;">QUITTANCE DE LOYER</h1>
+          <p style="color: #999; font-size: 12px; margin: 5px 0;">Document officiel</p>
+        </div>
 
-          <div class="section">
-            <div class="section-title">Bailleur</div>
-            <div class="info-row">
-              <span class="info-label">Nom :</span>
-              <span class="info-value">${this.escapeHtml(formData.landlord.name)}</span>
-            </div>
-            <div class="info-row">
-              <span class="info-label">Adresse :</span>
-              <span class="info-value">${this.escapeHtml(formData.landlord.address).replace(/\n/g, '<br>')}</span>
-            </div>
+        <div style="margin-bottom: 20px;">
+          <div style="font-weight: bold; font-size: 13px; color: #135bec; text-transform: uppercase; margin-bottom: 8px; border-bottom: 1px solid #ddd; padding-bottom: 5px;">
+            Bailleur
           </div>
-
-          <div class="section">
-            <div class="section-title">Locataire</div>
-            <div class="info-row">
-              <span class="info-label">Nom :</span>
-              <span class="info-value">${this.escapeHtml(tenant.name)}</span>
-            </div>
-            <div class="info-row">
-              <span class="info-label">Adresse du bien :</span>
-              <span class="info-value">${this.escapeHtml(tenant.address).replace(/\n/g, '<br>')}</span>
-            </div>
+          <div style="margin-bottom: 6px;">
+            <span style="font-weight: bold; display: inline-block; width: 140px;">Nom :</span>
+            <span>${this.escapeHtml(formData.landlord.name)}</span>
           </div>
-
-          <div class="section">
-            <div class="section-title">Période de Location</div>
-            <div class="info-row">
-              <span class="info-label">Du :</span>
-              <span class="info-value">${formattedStart}</span>
-            </div>
-            <div class="info-row">
-              <span class="info-label">Au :</span>
-              <span class="info-value">${formattedEnd}</span>
-            </div>
-            ${isPartialMonth ? `
-            <div class="info-row">
-              <span class="info-label">Jours facturés :</span>
-              <span class="info-value">${month.daysToCharge} jour(s) sur ${month.daysInMonth}</span>
-            </div>
-            ` : ''}
-          </div>
-
-          <div class="amount-section">
-            <div class="amount-row">
-              <span>Loyer HC :</span>
-              <span>${month.rental.toFixed(2)} €</span>
-            </div>
-            <div class="amount-row">
-              <span>${formData.chargeType === 'Forfait' ? 'Charges (forfait) :' : 'Charges (provision) :'}</span>
-              <span>${month.charges.toFixed(2)} €</span>
-            </div>
-            <div class="amount-row total">
-              <span>Total dû :</span>
-              <span>${month.total.toFixed(2)} €</span>
-            </div>
-          </div>
-
-          <div class="section">
-            <div class="section-title">Paiement</div>
-            <div class="info-row">
-              <span class="info-label">Date de paiement :</span>
-              <span class="info-value">${this.formatDate(formData.dates.payment, 'DD/MM/YYYY')}</span>
-            </div>
-          </div>
-
-          ${this.signatureImage ? `
-          <div class="signature-area">
-            <div class="signature-box">
-              <img src="${this.signatureImage}" class="signature-image" alt="Signature" />
-              <div>Signature du bailleur</div>
-            </div>
-            <div class="signature-box">
-              <div style="height: 60px;"></div>
-              <div>Acceptation du locataire</div>
-            </div>
-          </div>
-          ` : `
-          <div class="signature-area">
-            <div class="signature-box">
-              <div style="height: 60px;"></div>
-              <div>Signature du bailleur</div>
-            </div>
-            <div class="signature-box">
-              <div style="height: 60px;"></div>
-              <div>Acceptation du locataire</div>
-            </div>
-          </div>
-          `}
-
-          ${formData.notes ? `
-          <div class="notes">
-            <strong>Notes :</strong><br>
-            ${this.escapeHtml(formData.notes).replace(/\n/g, '<br>')}
-          </div>
-          ` : ''}
-
-          <div class="footer">
-            Généré le ${receiptDate}
+          <div style="margin-bottom: 6px;">
+            <span style="font-weight: bold; display: inline-block; width: 140px; vertical-align: top;">Adresse :</span>
+            <span>${this.escapeHtml(formData.landlord.address).replace(/\n/g, '<br>')}</span>
           </div>
         </div>
-      </body>
-      </html>
-    `;
 
-    return receiptHTML;
+        <div style="margin-bottom: 20px;">
+          <div style="font-weight: bold; font-size: 13px; color: #135bec; text-transform: uppercase; margin-bottom: 8px; border-bottom: 1px solid #ddd; padding-bottom: 5px;">
+            Locataire
+          </div>
+          <div style="margin-bottom: 6px;">
+            <span style="font-weight: bold; display: inline-block; width: 140px;">Nom :</span>
+            <span>${this.escapeHtml(formData.tenant.name)}</span>
+          </div>
+          <div style="margin-bottom: 6px;">
+            <span style="font-weight: bold; display: inline-block; width: 140px; vertical-align: top;">Adresse du bien :</span>
+            <span>${this.escapeHtml(formData.tenant.address).replace(/\n/g, '<br>')}</span>
+          </div>
+        </div>
+
+        <div style="margin-bottom: 20px;">
+          <div style="font-weight: bold; font-size: 13px; color: #135bec; text-transform: uppercase; margin-bottom: 8px; border-bottom: 1px solid #ddd; padding-bottom: 5px;">
+            Période de Location
+          </div>
+          <div style="margin-bottom: 6px;">
+            <span style="font-weight: bold; display: inline-block; width: 140px;">Du :</span>
+            <span>${formattedStart}</span>
+          </div>
+          <div style="margin-bottom: 6px;">
+            <span style="font-weight: bold; display: inline-block; width: 140px;">Au :</span>
+            <span>${formattedEnd}</span>
+          </div>
+          ${isPartialMonth ? `
+          <div style="margin-bottom: 6px;">
+            <span style="font-weight: bold; display: inline-block; width: 140px;">Jours facturés :</span>
+            <span>${month.daysToCharge} jour(s) sur ${month.daysInMonth}</span>
+          </div>
+          ` : ''}
+        </div>
+
+        <div style="background-color: #f8f8f8; padding: 12px; border-radius: 3px; margin: 20px 0; border: 1px solid #e0e0e0;">
+          <div style="display: flex; justify-content: space-between; margin-bottom: 8px; font-size: 13px;">
+            <span>Loyer HC :</span>
+            <span>${month.rental.toFixed(2)} €</span>
+          </div>
+          <div style="display: flex; justify-content: space-between; margin-bottom: 8px; font-size: 13px;">
+            <span>${formData.chargeType === 'Forfait' ? 'Charges (forfait) :' : 'Charges (provision) :'}</span>
+            <span>${month.charges.toFixed(2)} €</span>
+          </div>
+          <div style="display: flex; justify-content: space-between; font-weight: bold; font-size: 15px; border-top: 2px solid #135bec; padding-top: 8px; margin-top: 8px; color: #135bec;">
+            <span>Total dû :</span>
+            <span>${month.total.toFixed(2)} €</span>
+          </div>
+        </div>
+
+        <div style="margin-bottom: 20px;">
+          <div style="font-weight: bold; font-size: 13px; color: #135bec; text-transform: uppercase; margin-bottom: 8px; border-bottom: 1px solid #ddd; padding-bottom: 5px;">
+            Paiement
+          </div>
+          <div style="margin-bottom: 6px;">
+            <span style="font-weight: bold; display: inline-block; width: 140px;">Date de paiement :</span>
+            <span>${formattedPaymentDate}</span>
+          </div>
+        </div>
+
+        ${this.signatureImage ? `
+        <div style="margin-top: 40px; display: flex; justify-content: space-between;">
+          <div style="width: 45%; text-align: center; border-top: 1px solid #333; padding-top: 8px; font-size: 12px;">
+            <img src="${this.signatureImage}" style="max-width: 80px; max-height: 50px; margin-bottom: 8px;" alt="Signature" />
+            <div>Signature du bailleur</div>
+          </div>
+          <div style="width: 45%; text-align: center; border-top: 1px solid #333; padding-top: 8px; font-size: 12px;">
+            <div style="height: 60px;"></div>
+            <div>Acceptation du locataire</div>
+          </div>
+        </div>
+        ` : `
+        <div style="margin-top: 40px; display: flex; justify-content: space-between;">
+          <div style="width: 45%; text-align: center; border-top: 1px solid #333; padding-top: 8px; font-size: 12px;">
+            <div style="height: 60px;"></div>
+            <div>Signature du bailleur</div>
+          </div>
+          <div style="width: 45%; text-align: center; border-top: 1px solid #333; padding-top: 8px; font-size: 12px;">
+            <div style="height: 60px;"></div>
+            <div>Acceptation du locataire</div>
+          </div>
+        </div>
+        `}
+
+        ${formData.notes ? `
+        <div style="font-size: 11px; color: #666; margin-top: 20px; padding: 10px; background-color: #fafafa; border-left: 3px solid #135bec;">
+          <strong>Notes :</strong><br>
+          ${this.escapeHtml(formData.notes).replace(/\n/g, '<br>')}
+        </div>
+        ` : ''}
+
+        <div style="margin-top: 20px; font-size: 11px; color: #999; border-top: 1px solid #ddd; padding-top: 10px; text-align: center;">
+          Généré le ${receiptDate}
+        </div>
+      </div>
+    `;
   }
 
   // ============================================
@@ -679,7 +445,8 @@ class RentReceiptGenerator {
   // ============================================
 
   formatDate(date, format = 'DD/MM/YYYY') {
-    if (!date) return '';
+    if (!date || isNaN(date.getTime())) return '';
+    
     const day = String(date.getDate()).padStart(2, '0');
     const month = String(date.getMonth() + 1).padStart(2, '0');
     const year = date.getFullYear();
@@ -690,6 +457,7 @@ class RentReceiptGenerator {
   }
 
   escapeHtml(text) {
+    if (!text) return '';
     const map = {
       '&': '&amp;',
       '<': '&lt;',
@@ -697,7 +465,7 @@ class RentReceiptGenerator {
       '"': '&quot;',
       "'": '&#039;'
     };
-    return text.replace(/[&<>"']/g, m => map[m]);
+    return String(text).replace(/[&<>"']/g, m => map[m]);
   }
 
   saveToLocalStorage() {
@@ -705,14 +473,16 @@ class RentReceiptGenerator {
       const data = {
         landlordName: document.getElementById('landlord-name')?.value || '',
         landlordAddress: document.getElementById('landlord-address')?.value || '',
-        tenants: this.tenants.map(t => ({
-          index: t.index,
-          name: document.getElementById(`tenant-name-${t.index}`)?.value || '',
-          address: document.getElementById(`tenant-address-${t.index}`)?.value || ''
-        })),
+        tenantName: document.getElementById('tenant-name')?.value || '',
+        tenantAddress: document.getElementById('tenant-address')?.value || '',
+        dateStart: document.getElementById('date-start')?.value || '',
+        dateEnd: document.getElementById('date-end')?.value || '',
+        paymentDay: document.getElementById('payment-day')?.value || '5',
+        rentalAmount: document.getElementById('rental-amount')?.value || '',
+        chargesAmount: document.getElementById('charges-amount')?.value || '',
+        chargeType: document.getElementById('charge-forfait')?.checked ? 'forfait' : 'provision',
+        additionalNotes: document.getElementById('additional-notes')?.value || '',
         signatureImage: this.signatureImage,
-        preFillNextPeriod: this.preFillNextPeriod,
-        tenantCounter: this.tenantCounter,
         timestamp: new Date().toISOString()
       };
       localStorage.setItem('rentReceiptData', JSON.stringify(data));
@@ -728,55 +498,29 @@ class RentReceiptGenerator {
 
       const parsed = JSON.parse(data);
 
-      // Restaurer les données du bailleur
-      if (parsed.landlordName) {
-        const input = document.getElementById('landlord-name');
-        if (input) input.value = parsed.landlordName;
-      }
-
-      if (parsed.landlordAddress) {
-        const input = document.getElementById('landlord-address');
-        if (input) input.value = parsed.landlordAddress;
+      // Restaurer tous les champs
+      if (parsed.landlordName) document.getElementById('landlord-name').value = parsed.landlordName;
+      if (parsed.landlordAddress) document.getElementById('landlord-address').value = parsed.landlordAddress;
+      if (parsed.tenantName) document.getElementById('tenant-name').value = parsed.tenantName;
+      if (parsed.tenantAddress) document.getElementById('tenant-address').value = parsed.tenantAddress;
+      if (parsed.dateStart) document.getElementById('date-start').value = parsed.dateStart;
+      if (parsed.dateEnd) document.getElementById('date-end').value = parsed.dateEnd;
+      if (parsed.paymentDay) document.getElementById('payment-day').value = parsed.paymentDay;
+      if (parsed.rentalAmount) document.getElementById('rental-amount').value = parsed.rentalAmount;
+      if (parsed.chargesAmount) document.getElementById('charges-amount').value = parsed.chargesAmount;
+      if (parsed.additionalNotes) document.getElementById('additional-notes').value = parsed.additionalNotes;
+      
+      // Restaurer le type de charges
+      if (parsed.chargeType === 'provision') {
+        document.getElementById('charge-provision').checked = true;
+      } else {
+        document.getElementById('charge-forfait').checked = true;
       }
 
       // Restaurer la signature
       if (parsed.signatureImage) {
         this.signatureImage = parsed.signatureImage;
         this.updateSignaturePreview();
-      }
-
-      // Restaurer les locataires
-      this.preFillNextPeriod = parsed.preFillNextPeriod || false;
-      this.tenantCounter = parsed.tenantCounter || 1;
-
-      if (parsed.tenants && Array.isArray(parsed.tenants)) {
-        parsed.tenants.forEach((tenant, index) => {
-          if (index === 0) {
-            // Premier locataire déjà dans le DOM
-            const nameInput = document.getElementById('tenant-name-0');
-            const addressInput = document.getElementById('tenant-address-0');
-            if (nameInput) nameInput.value = tenant.name || '';
-            if (addressInput) addressInput.value = tenant.address || '';
-          } else {
-            // Ajouter les autres locataires
-            this.tenants.push({
-              index: tenant.index,
-              name: tenant.name,
-              address: tenant.address
-            });
-            this.addTenant();
-            const nameInput = document.getElementById(`tenant-name-${tenant.index}`);
-            const addressInput = document.getElementById(`tenant-address-${tenant.index}`);
-            if (nameInput) nameInput.value = tenant.name || '';
-            if (addressInput) addressInput.value = tenant.address || '';
-          }
-        });
-      }
-
-      // Restaurer la case pré-remplissage
-      const prefillCheckbox = document.getElementById('prefill-checkbox');
-      if (prefillCheckbox) {
-        prefillCheckbox.checked = this.preFillNextPeriod;
       }
     } catch (error) {
       console.warn('Erreur lors du chargement du localStorage:', error);
